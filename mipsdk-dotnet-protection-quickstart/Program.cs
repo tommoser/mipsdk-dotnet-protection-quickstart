@@ -29,21 +29,13 @@ namespace mipsdk_dotnet_protection_quickstart
                 ApplicationVersion = appVersion
             };
 
+            Console.WriteLine("Enter a user id: ");
+            var userId = Console.ReadLine();
+
             // Initialize Action class, passing in AppInfo.
-            Action action = new Action(appInfo);
-
-            var templates = action.ListTemplates();
+            Action action = new Action(appInfo, userId);
             
-            for(int i = 0; i < templates.Count; i++)
-            {
-                Console.WriteLine("{0}: {1}", i.ToString(), templates[i].Name);
-            }
-
-            Console.WriteLine("");
-            Console.WriteLine("Select a template: ");
-            var selectedTemplate = Console.ReadLine();
-            
-            var publishHandler = action.CreatePublishingHandler(templates[Convert.ToInt32(selectedTemplate)].Id);
+            var publishHandler = action.CreatePublishingHandler(userId);
 
             Console.WriteLine("Enter some string to protect: ");
             var userInputString = Console.ReadLine();

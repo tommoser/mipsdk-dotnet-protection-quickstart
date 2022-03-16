@@ -19,7 +19,7 @@ namespace mipsdk_dotnet_protection_quickstart
         private IProtectionEngine engine;
         private MipContext mipContext;
 
-        public Action(ApplicationInfo appInfo) 
+        public Action(ApplicationInfo appInfo, string userId) 
         {
             this.appInfo = appInfo;
 
@@ -36,13 +36,13 @@ namespace mipsdk_dotnet_protection_quickstart
             mipContext = MIP.CreateMipContext(mipConfiguration);
 
             // This method in AuthDelegateImplementation triggers auth against Graph so that we can get the user ID.
-            var id = authDelegate.GetUserIdentity();
+            //var id = authDelegate.GetUserIdentity();
 
             // Create profile
             profile = CreateProtectionProfile(appInfo, ref authDelegate);
 
             // Create engine by providing Idenity from authDelegate to assist with service discovery.
-            engine = CreateProtectionEngine(id);
+            engine = CreateProtectionEngine(userId);
         }
 
         /// <summary>
@@ -72,8 +72,10 @@ namespace mipsdk_dotnet_protection_quickstart
         }
 
         // Create a protection engine
-        private IProtectionEngine CreateProtectionEngine(Identity identity)
+        private IProtectionEngine CreateProtectionEngine(string userId)
         {
+            Identity identity = new Identity(userId);
+
             if (profile == null)
             {
                 profile = CreateProtectionProfile(appInfo, ref authDelegate);
@@ -91,18 +93,39 @@ namespace mipsdk_dotnet_protection_quickstart
 
             return engine;
         }
-
-        public List<TemplateDescriptor> ListTemplates()
-        {
-            return engine.GetTemplates();
-        }
+               
 
         // Create a handler for publishing. 
-        public IProtectionHandler CreatePublishingHandler(string templateId)
+        public IProtectionHandler CreatePublishingHandler(string userId)
         {
-            ProtectionDescriptor protectionDescriptor = new ProtectionDescriptor(templateId);
-            PublishingSettings publishingSettings = new PublishingSettings(protectionDescriptor);
+            // Need to create an ad hoc license here for only the "owner."
+            // Since we don't support an empty descriptor, create on just for the owner. 
+            // Doesn't matter what role we use since they'll have owner role regardless.
+            List<string> users = new List<string>()
+            {
+                userId
+            };
 
+            List<string> roles = new List<string>()
+            {
+                Roles.Author
+            };
+
+            UserRoles userRole = new UserRoles(users, roles);
+
+            List<UserRoles> userRoles = new List<UserRoles>()
+            {
+                userRole
+            };
+
+            ProtectionDescriptor descriptor = new ProtectionDescriptor(userRoles);
+            
+            PublishingSettings publishingSettings = new PublishingSettings(descriptor);
+            
+            // This setting is critical. Sets the PL owner to the user and not the service.
+            publishingSettings.DelegatedUserEmail = userId;
+
+            // Create the handler and return. Use it to encrypt bytes and store PL. 
             var protectionHandler = engine.CreateProtectionHandlerForPublishing(publishingSettings);
             return protectionHandler;
         }

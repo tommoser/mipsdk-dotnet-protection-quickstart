@@ -39,12 +39,17 @@ namespace mipsdk_dotnet_protection_quickstart
     public class AuthDelegateImplementation : IAuthDelegate
     {
         // Set the redirect URI from the AAD Application Registration.
-        private static readonly bool isMultitenantApp = Convert.ToBoolean(ConfigurationManager.AppSettings["ida:IsMultitenantApp"]);
+        //private static readonly bool isMultitenantApp = Convert.ToBoolean(ConfigurationManager.AppSettings["ida:IsMultitenantApp"]);
+        private static readonly string redirectUri = Convert.ToString(ConfigurationManager.AppSettings["ida:RedirectUri"]);
+        
+        //Don't do this :)
+        private static readonly string clientSecret = Convert.ToString(ConfigurationManager.AppSettings["ida:ClientSecret"]);
+
         private static readonly string tenant = ConfigurationManager.AppSettings["ida:TenantGuid"];
         private ApplicationInfo appInfo;
 
         // Microsoft Authentication Library IPublicClientApplication
-        private IPublicClientApplication _app;
+        private IConfidentialClientApplication _app;
 
         // Define MSAL scopes.
         // As of the 1.7 release, the two services backing the MIP SDK, RMS and MIP Sync Service, provide resources instead of scopes.
@@ -69,7 +74,7 @@ namespace mipsdk_dotnet_protection_quickstart
         /// <returns>The OAuth2 token for the user</returns>
         public string AcquireToken(Identity identity, string authority, string resource, string claims)
         {
-            return AcquireTokenAsync(authority, resource, claims, isMultitenantApp).Result.AccessToken;
+            return AcquireTokenAsync(authority, resource, claims).Result.AccessToken;
         }
 
         /// <summary>
@@ -81,29 +86,22 @@ namespace mipsdk_dotnet_protection_quickstart
         /// <param name="resource"></param>
         /// <param name="claims"></param>
         /// <returns></returns>
-        public async Task<AuthenticationResult> AcquireTokenAsync(string authority, string resource, string claims, bool isMultiTenantApp = true)
+        public async Task<AuthenticationResult> AcquireTokenAsync(string authority, string resource, string claims)
         {
             AuthenticationResult result = null;
 
-            // Create an auth context using the provided authority and token cache
-            if (isMultitenantApp)
-                _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                    .WithAuthority(authority)
-                    .WithDefaultRedirectUri()
-                    .Build();
-            else
-            {
-                if (authority.ToLower().Contains("common"))
-                {
-                    var authorityUri = new Uri(authority);
-                    authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
-                }
-                _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                    .WithAuthority(authority)
-                    .WithDefaultRedirectUri()
-                    .Build();
+            _app = ConfidentialClientApplicationBuilder.Create(appInfo.ApplicationId)
+                .WithAuthority(authority)
+                .WithRedirectUri(redirectUri)
+                .WithClientSecret(clientSecret)
+                .Build();
 
+            if (authority.ToLower().Contains("common"))
+            {
+                var authorityUri = new Uri(authority);
+                authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
             }
+
             var accounts = (_app.GetAccountsAsync()).GetAwaiter().GetResult();
 
             // Append .default to the resource passed in to AcquireToken().
@@ -111,19 +109,16 @@ namespace mipsdk_dotnet_protection_quickstart
 
             try
             {
-                result = await _app.AcquireTokenSilent(scopes, accounts.FirstOrDefault())
-                    .ExecuteAsync();
+                result = _app.AcquireTokenForClient(scopes)
+                    .WithAuthority(authority)
+                    .ExecuteAsync()
+                    .GetAwaiter()
+                    .GetResult();                
             }
 
-            catch (MsalUiRequiredException)
+            catch (Exception ex)
             {
-                result = _app.AcquireTokenInteractive(scopes)
-                    .WithAccount(accounts.FirstOrDefault())
-                    .WithPrompt(Prompt.SelectAccount)
-                    .ExecuteAsync()
-                    .ConfigureAwait(false)
-                    .GetAwaiter()
-                    .GetResult();
+
             }
 
             // Return the token. The token is sent to the resource.                           
